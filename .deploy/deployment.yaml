@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
       - name: txn-processor-controller
-        image: pratapmridha/txn-processor-controller:__LATEST_RELEASE_TAG__
+        image: ghcr.io/hypersign-protocol/txn-processor-controller:__LATEST_RELEASE_TAG__
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: __GOOGLE_APPLICATION_CREDENTIALS__
