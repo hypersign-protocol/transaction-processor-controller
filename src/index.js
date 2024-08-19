@@ -1,5 +1,10 @@
 import { configDotenv } from 'dotenv';
 import { getKubeconfig } from './auth.js';
+import { exec } from 'child_process'
+
+
+
+
 configDotenv()
 
 
@@ -8,7 +13,43 @@ import k8s from '@kubernetes/client-node';
 
 
 
+function execute() {
+  try {
 
+    exec(`gcloud auth login --cred-file=${process.env.GOOGLE_APPLICATION_CREDENTIALS}`, (err, stdout, stderr) => {
+      if (err) {
+        console.log(err);
+
+        // node couldn't execute the command
+        return;
+      }
+
+      // the *entire* stdout and stderr (buffered)
+      console.log(`stdout: ${stdout}`);
+      console.log(`stderr: ${stderr}`);
+
+    })
+
+
+    exec(`gcloud container clusters get-credentials hypermine-gke --region asia-south1`, (err, stdout, stderr) => {
+      if (err) {
+        console.log(err);
+
+        // node couldn't execute the command
+        return;
+      }
+
+      // the *entire* stdout and stderr (buffered)
+      console.log(`stdout: ${stdout}`);
+      console.log(`stderr: ${stderr}`);
+
+    })
+  } catch (e) {
+    console.log(e);
+
+  }
+
+}
 
 
 
@@ -127,6 +168,7 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
 
 (async () => {
   try {
+    execute()
     console.log("Start Service");
 
     const namespace = 'hypermine-development'
