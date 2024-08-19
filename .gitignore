@@ -1,0 +1,7 @@
+node_modules
+fyre-400407-9c9f737ef3f7.json
+config.yaml
+config.json
+secrets.yaml
+.env
+deployment.yaml
