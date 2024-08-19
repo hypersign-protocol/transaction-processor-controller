@@ -4,4 +4,3 @@ config.yaml
 config.json
 secrets.yaml
 .env
-deployment.yaml

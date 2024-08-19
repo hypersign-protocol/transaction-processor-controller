@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: txn-processor-controller
+  namespace: hypermine-development
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: txn-processor-controller
+  template:
+    metadata:
+      labels:
+        app: txn-processor-controller
+    spec:
+      containers:
+      - name: txn-processor-controller
+        image: pratapmridha/txn-processor-controller:__LATEST_RELEASE_TAG__
+        env:
+        - name: GOOGLE_APPLICATION_CREDENTIALS
+          value: __GOOGLE_APPLICATION_CREDENTIALS__
+        - name: GLOBAL_TXN_CONTROLLER_QUEUE
+          value: __GLOBAL_TXN_CONTROLLER_QUEUE__
+        - name: GOOGLE_CLOUD_PROJECT
+          value: __GOOGLE_CLOUD_PROJECT__
+        - name: AMQ_URL
+          value: __AMQ_URL__
+        - name: TXN_PROCESSOR_DYNAMIC_TAG
+          value: __TXN_PROCESSOR_DYNAMIC_TAG__
+        volumeMounts:
+        - name: credentials
+          readOnly: true
+          mountPath: "/data/fyre-400407-9c9f737ef3f7.json"
+
+      volumes:
+      - name: credentials
+        secret:
+          secretName: txn-processor-controller-secret
+
