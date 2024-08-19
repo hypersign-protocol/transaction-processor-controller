@@ -30,7 +30,7 @@ spec:
         volumeMounts:
         - name: credentials
           readOnly: true
-          mountPath: "/data/fyre-400407-9c9f737ef3f7.json"
+          mountPath: "/data"
 
       volumes:
       - name: credentials
