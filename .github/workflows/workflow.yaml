@@ -34,4 +34,4 @@ jobs:
       with:
         context: .
         push: true
-        tags: ghcr.io/${{ github.repository_owner }}/your_image_name:${{ env.LATEST_RELEASE_TAG }}
+        tags: ghcr.io/${{ github.repository_owner }}/txn-processor-controller:${{ env.LATEST_RELEASE_TAG }}
