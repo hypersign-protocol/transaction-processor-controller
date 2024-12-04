@@ -16,6 +16,15 @@ spec:
       containers:
       - name: txn-processor-controller
         image: ghcr.io/hypersign-protocol/txn-processor-controller:__LATEST_RELEASE_TAG__
+        imagePullPolicy: Always
+
+        resources:
+          limits:
+            memory: '512Mi'
+            cpu: '500m'
+          requests:
+            memory: '256Mi'
+            cpu: '250m'
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: __GOOGLE_APPLICATION_CREDENTIALS__
@@ -36,4 +45,3 @@ spec:
       - name: credentials
         secret:
           secretName: txn-processor-controller-secret
-
