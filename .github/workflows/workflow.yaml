@@ -81,5 +81,14 @@ jobs:
     - name: "Replace vars"
       run: find .deploy/deployment.yaml -type f -exec sed  -i -e "s#__TXN_PROCESSOR_DYNAMIC_TAG__#${{ vars.TXN_PROCESSOR_DYNAMIC_TAG }}#" {} \;
 
+    - name: "Replace vars"
+      run: find .deploy/deployment.yaml -type f -exec sed  -i -e "s#__PREFIX__#${{ vars.PREFIX }}#" {} \;
+
+    - name: "Replace vars"
+      run: find .deploy/deployment.yaml -type f -exec sed  -i -e "s#__DB_URL__#${{ vars.DB_URL }}#" {} \;
+
+    - name: "Replace vars"
+      run: find .deploy/deployment.yaml -type f -exec sed  -i -e "s#__DB_CONFIG__#${{ vars.DB_CONFIG }}#" {} \;
+
     - name: "Deploy"
       run: kubectl apply -f .deploy/deployment.yaml

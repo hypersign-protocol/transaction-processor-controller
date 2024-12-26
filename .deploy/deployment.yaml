@@ -36,6 +36,12 @@ spec:
           value: __AMQ_URL__
         - name: TXN_PROCESSOR_DYNAMIC_TAG
           value: __TXN_PROCESSOR_DYNAMIC_TAG__
+        - name: PREFIX
+          value: __PREFIX__
+        - name: DB_URL
+          value: __DB_URL__
+        - name: DB_CONFIG
+          value: __DB_CONFIG__
         volumeMounts:
         - name: credentials
           readOnly: true
