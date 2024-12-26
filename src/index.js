@@ -68,9 +68,24 @@ const deploy = async (name,
             env: Object.entries(env).map(([key, value]) => ({
               name: key,
               value: value
-            }))
+            })),
+            volumeMounts: [
+              {
+                name: 'mongo',
+                mountPath: '/data'
 
-          }]
+              }
+            ]
+
+          }],
+        volumes: [
+          {
+            name: 'mongo',
+            secret: {
+              secretName: 'mongo'
+            }
+          }
+        ]
       }
     }
 
@@ -146,10 +161,12 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
         console.log(message);
         const msg = message.content.toString()
         const parsedMessage = JSON.parse(msg)
-        queueMsg = parsedMessage
+        queueMsg = {
+          ...parsedMessage,
+          DB_URL: process.env.DB_URL + '/' + process.env.PREFIX + parsedMessage.tenent + process.env.DB_CONFIG,
+        }
 
         const podName = parsedMessage.podName + '-' + parsedMessage.granteeWalletAddress
-        console.log(podName);
 
         // parse and create a pod to kubernetes
 
