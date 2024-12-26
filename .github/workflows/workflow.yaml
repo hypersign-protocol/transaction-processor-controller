@@ -76,9 +76,6 @@ jobs:
       run: find .deploy/deployment.yaml -type f -exec sed  -i -e "s#__AMQ_URL__#${{ vars.AMQ_URL }}#" {} \;
 
     - name: "Replace vars"
-      run: find .deploy/deployment.yaml -type f -exec sed  -i -e "s#__AMQ_URL__#${{ vars.AMQ_URL }}#" {} \;
-
-    - name: "Replace vars"
       run: find .deploy/deployment.yaml -type f -exec sed  -i -e "s#__TXN_PROCESSOR_DYNAMIC_TAG__#${{ vars.TXN_PROCESSOR_DYNAMIC_TAG }}#" {} \;
 
     - name: "Replace vars"
