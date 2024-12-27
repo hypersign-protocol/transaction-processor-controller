@@ -32,14 +32,14 @@ const checkIfPodExists = async (podName) => {
   try {
     const namespace = 'hypermine-development'
     const res = await k8sApi.readNamespacedPod(podName, namespace);
-    console.log(res?.body?.status?.phase);
+    // console.log(res?.body?.status?.phase);
     if (res?.body?.status?.phase) {
 
       return { found: true, status: res?.body?.status?.phase }
     }
 
   } catch (error) {
-    console.log(error.body);
+    // console.log(error.body);
     if (error.body.reason == 'NotFound') {
       //  Provison new POD
       return { found: false }
@@ -146,7 +146,9 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
 
     const namespace = 'hypermine-development'
 
-    const connection = await amqp.connect(process.env.AMQ_URL)
+    const connection = await amqp.connect(process.env.AMQ_URL, {
+      heartbeat: 30
+    })
     const channel = await connection.createChannel();
     await channel.assertQueue(queueName, {
       durable: false,
@@ -191,10 +193,19 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
 
     })
 
+    process.on('SIGINT', async () => {
+      console.log('Closing RabbitMQ connection...');
+      await channel.close();
+      await connection.close();
+      process.exit(0);
+    });
   } catch (error) {
     console.log(error.message)
   }
 })()
+
+
+
 
 
 
