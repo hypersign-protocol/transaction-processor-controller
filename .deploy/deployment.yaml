@@ -20,11 +20,11 @@ spec:
 
         resources:
           limits:
-            memory: '512Mi'
-            cpu: '500m'
+            memory: '2'
+            cpu: '2000m'
           requests:
-            memory: '256Mi'
-            cpu: '250m'
+            memory: '1'
+            cpu: '2000m'
         env:
         - name: GOOGLE_APPLICATION_CREDENTIALS
           value: __GOOGLE_APPLICATION_CREDENTIALS__
