@@ -173,9 +173,9 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
         // parse and create a pod to kubernetes
 
         const { found, status } = await checkIfPodExists(podName)
-        console.log({
-          found, status
-        });
+        if (found == 'Succeeded') {
+          await k8sApi.deleteNamespacedPod(podName, "hypermine-development")
+        }
         if (found && status !== "Succeeded") {
 
           return
