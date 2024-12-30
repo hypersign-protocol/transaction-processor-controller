@@ -45,7 +45,7 @@ spec:
         volumeMounts:
         - name: credentials
           readOnly: true
-          mountPath: "/data"
+          mountPath: "/cred"
 
       volumes:
       - name: credentials
