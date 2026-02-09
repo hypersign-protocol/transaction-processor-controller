@@ -9,4 +9,4 @@ sudo docker run -d \
   -p 15672:15672 \
   -e RABBITMQ_DEFAULT_USER=myuser \
   -e RABBITMQ_DEFAULT_PASS=mypassword \
-  rabbitmq:management
+  rabbitmq:3-management

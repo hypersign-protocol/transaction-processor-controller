@@ -6,6 +6,42 @@ configDotenv()
 import amqp from 'amqplib'
 import k8s from '@kubernetes/client-node';
 
+const LOG_LEVEL = (process.env.LOG_LEVEL || 'info').toLowerCase();
+const LOG_LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
+const shouldLog = (level) => LOG_LEVELS[level] <= (LOG_LEVELS[LOG_LEVEL] ?? 2);
+const log = (level, ...args) => {
+  if (!shouldLog(level)) return;
+  const ts = new Date().toISOString();
+  const out = level === 'error' ? console.error : console.log;
+  out(`[${ts}] [${level.toUpperCase()}]`, ...args);
+};
+
+const getPodErrorReason = (pod) => {
+  const waitingReasons = new Set([
+    'ErrImagePull',
+    'ImagePullBackOff',
+    'CrashLoopBackOff',
+    'CreateContainerConfigError',
+    'InvalidImageName'
+  ]);
+  const containerStatuses = pod?.status?.containerStatuses || [];
+  for (const cs of containerStatuses) {
+    const reason = cs?.state?.waiting?.reason;
+    if (reason && waitingReasons.has(reason)) {
+      return reason;
+    }
+  }
+
+  const conditions = pod?.status?.conditions || [];
+  for (const c of conditions) {
+    if (c?.reason === 'Unschedulable') {
+      return 'Unschedulable';
+    }
+  }
+
+  return null;
+};
+
 
 
 
@@ -40,11 +76,13 @@ const checkIfPodExists = async (podName) => {
 
   } catch (error) {
     // console.log(error.body);
-    if (error.body.reason == 'NotFound') {
+    if (error?.body?.reason == 'NotFound') {
       //  Provison new POD
       return { found: false }
     }
   }
+
+  return { found: false, status: 'Unknown' }
 
 }
 const deploy = async (name,
@@ -97,19 +135,28 @@ const deploy = async (name,
       const namespace = 'hypermine-development'
       const res = await k8sApi.readNamespacedPod(name, namespace);
       const pod = res.body
-      console.log(`Name: ${pod.metadata.name}`);
-      console.log(`Namespace: ${pod.metadata.namespace}`);
-      console.log(`  Status: ${pod.status.phase}`);
-      console.log(`  Containers: ${pod.spec.containers.map(container => container.name).join(', ')}`);
-      console.log(`  Conditions: ${pod.status.conditions.map(c => `${c.type}: ${c.status}`).join(', ')}`);
-      console.log('---');
-      console.log(pod.status.phase);
+      log('debug', `Pod ${pod.metadata.name} in ${pod.metadata.namespace} is ${pod.status.phase}`);
+
+      const errorReason = getPodErrorReason(pod);
+      if (errorReason) {
+        clearInterval(interval)
+        set.delete(pod.metadata.name)
+        await k8sApi.deleteNamespacedPod(name, "hypermine-development")
+        delete globalThis[name]
+
+        log('warn', `Pod ${name} deleted due to error: ${errorReason}`);
+        return;
+      }
+
       if (pod.status.phase === 'Pending') {
-        console.log(globalThis[name]);
-        console.log(name);
+        log('debug', `Pod ${name} pending count: ${globalThis[name]}`);
         if (globalThis[name] > 10) {
+          clearInterval(interval)
           set.delete(pod.metadata.name)
           await k8sApi.deleteNamespacedPod(name, "hypermine-development")
+          delete globalThis[name]
+
+          log('warn', `Pod ${name} deleted after pending timeout`);
 
         }
         globalThis[name]++
@@ -119,10 +166,11 @@ const deploy = async (name,
 
 
         const data = await k8sApi.deleteNamespacedPod(name, "hypermine-development")
-        const intervals = set.get(name)
         clearInterval(interval)
 
         set.delete(name)
+        delete globalThis[name]
+        log('info', `Pod ${name} completed with status ${pod.status.phase} and was deleted`);
       }
 
     }, 5000)
@@ -132,7 +180,7 @@ const deploy = async (name,
     // const data = await k8sApi.deleteNamespacedPod("txn-processor-wallet", "hypermine-development")
     // console.log(data.body.status.phase);
   } catch (err) {
-    console.error(err);
+    log('error', err);
   }
 };
 
@@ -142,7 +190,7 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
 
 (async () => {
   try {
-    console.log("Start Service");
+    log('info', 'Start Service');
 
     const namespace = 'hypermine-development'
 
@@ -156,11 +204,14 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
     })
     await channel.consume(queueName, async (message) => {
       let queueMsg;
-      console.log("Trying to consume")
+      log('debug', 'Trying to consume')
+
+      if (!message) {
+        return
+      }
 
       try {
 
-        console.log(message);
         const msg = message.content.toString()
         const parsedMessage = JSON.parse(msg)
         queueMsg = {
@@ -173,34 +224,37 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
         // parse and create a pod to kubernetes
 
         const { found, status } = await checkIfPodExists(podName)
-        if (found == 'Succeeded') {
+        if (found && (status === 'Succeeded' || status === 'Failed')) {
           await k8sApi.deleteNamespacedPod(podName, "hypermine-development")
         }
-        if (found && status !== "Succeeded") {
-
+        if (found && status !== "Succeeded" && status !== "Failed") {
+          log('info', `Pod ${podName} already exists with status ${status}`);
+          channel.ack(message)
           return
         } else {
 
           await deploy(podName, queueMsg)
           channel.ack(message)
 
+          log('info', `Pod ${podName} deployment requested`);
         }
 
       } catch (error) {
-        console.log(error.message);
+        log('error', error.message);
+        channel.nack(message, false, false)
 
       }
 
     })
 
     process.on('SIGINT', async () => {
-      console.log('Closing RabbitMQ connection...');
+      log('info', 'Closing RabbitMQ connection...');
       await channel.close();
       await connection.close();
       process.exit(0);
     });
   } catch (error) {
-    console.log(error.message)
+    log('error', error.message)
   }
 })()
 
