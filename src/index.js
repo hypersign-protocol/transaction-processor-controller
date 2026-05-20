@@ -181,12 +181,62 @@ const deploy = async (name,
     // console.log(data.body.status.phase);
   } catch (err) {
     log('error', err);
+    throw err; // let the consumer catch block handle it
   }
 };
 
 
 
 const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROLLER_QUEUE';
+const dlqName = process.env.GLOBAL_TXN_CONTROLLER_DLQ || 'GLOBAL_TXN_CONTROLLER_DLQ';
+const MAX_DLQ_RETRIES = parseInt(process.env.MAX_DLQ_RETRIES || '5');
+const DLQ_DRAIN_INTERVAL_MS = parseInt(process.env.DLQ_DRAIN_INTERVAL_MS || '300000'); // 5 min
+
+// Send message to DLQ, preserving original content. Tracks retry count in headers.
+const sendToDLQ = (channel, message, errorReason) => {
+  const retryCount = message.properties.headers?.['x-dlq-retry-count'] || 0;
+  if (retryCount >= MAX_DLQ_RETRIES) {
+    log('error', `Message permanently discarded after ${MAX_DLQ_RETRIES} DLQ retries. Reason: ${errorReason}`);
+    return;
+  }
+  channel.sendToQueue(dlqName, message.content, {
+    persistent: true,
+    headers: {
+      ...message.properties.headers,
+      'x-dlq-retry-count': retryCount + 1,
+      'x-dlq-reason': String(errorReason).slice(0, 500),
+      'x-dlq-entered-at': new Date().toISOString()
+    }
+  });
+  log('warn', `Message sent to DLQ (attempt ${retryCount + 1}/${MAX_DLQ_RETRIES}): ${errorReason}`);
+};
+
+// Drain DLQ by republishing messages back to the main queue in their original format.
+const drainDLQ = async (channel) => {
+  let count = 0;
+  try {
+    while (true) {
+      const msg = await channel.get(dlqName, { noAck: false });
+      if (!msg) break;
+      const retryCount = msg.properties.headers?.['x-dlq-retry-count'] || 0;
+      if (retryCount >= MAX_DLQ_RETRIES) {
+        log('error', `Permanently discarding DLQ message after ${retryCount} retries`);
+        channel.ack(msg);
+        continue;
+      }
+      // Republish original content back to main queue — consumer will process it normally
+      channel.sendToQueue(queueName, msg.content, {
+        persistent: false,
+        headers: msg.properties.headers
+      });
+      channel.ack(msg);
+      count++;
+    }
+  } catch (err) {
+    log('error', `DLQ drain error: ${err.message}`);
+  }
+  if (count > 0) log('info', `DLQ drained: ${count} message(s) republished to main queue`);
+};
 
 (async () => {
   try {
@@ -198,10 +248,10 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
       heartbeat: 30
     })
     const channel = await connection.createChannel();
-    await channel.assertQueue(queueName, {
-      durable: false,
-
-    })
+    await channel.assertQueue(queueName, { durable: false });
+    await channel.assertQueue(dlqName, { durable: true });
+    const drainInterval = setInterval(() => drainDLQ(channel), DLQ_DRAIN_INTERVAL_MS);
+    log('info', `DLQ drain scheduled every ${DLQ_DRAIN_INTERVAL_MS / 1000}s`);
     await channel.consume(queueName, async (message) => {
       let queueMsg;
       log('debug', 'Trying to consume')
@@ -241,18 +291,21 @@ const queueName = process.env.GLOBAL_TXN_CONTROLLER_QUEUE || 'GLOBAL_TXN_CONTROL
 
       } catch (error) {
         log('error', error.message);
-        channel.nack(message, false, false)
-
+        sendToDLQ(channel, message, error.message);
+        channel.ack(message);
       }
 
     })
 
-    process.on('SIGINT', async () => {
-      log('info', 'Closing RabbitMQ connection...');
-      await channel.close();
-      await connection.close();
+    const shutdown = async (signal) => {
+      log('info', `${signal} received, shutting down gracefully...`);
+      clearInterval(drainInterval);
+      try { await channel.close(); } catch (_) {}
+      try { await connection.close(); } catch (_) {}
       process.exit(0);
-    });
+    };
+    process.on('SIGTERM', () => shutdown('SIGTERM')); // k8s sends this
+    process.on('SIGINT', () => shutdown('SIGINT'));    // local dev Ctrl+C
   } catch (error) {
     log('error', error.message)
   }
