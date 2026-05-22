@@ -247,10 +247,41 @@ const drainDLQ = async (channel) => {
     const connection = await amqp.connect(process.env.AMQ_URL, {
       heartbeat: 30
     })
+
+    let channelOpen = true;
+
+    connection.on('error', (err) => {
+      log('error', `AMQP connection error: ${err.message}`);
+    });
+    connection.on('close', () => {
+      log('error', 'AMQP connection closed unexpectedly. Exiting for restart...');
+      channelOpen = false;
+      clearInterval(drainInterval);
+      process.exit(1);
+    });
+
     const channel = await connection.createChannel();
+
+    channel.on('error', (err) => {
+      log('error', `AMQP channel error: ${err.message}`);
+      channelOpen = false;
+    });
+    channel.on('close', () => {
+      log('error', 'AMQP channel closed. Exiting for restart...');
+      channelOpen = false;
+      clearInterval(drainInterval);
+      process.exit(1);
+    });
+
     await channel.assertQueue(queueName, { durable: false });
     await channel.assertQueue(dlqName, { durable: true });
-    const drainInterval = setInterval(() => drainDLQ(channel), DLQ_DRAIN_INTERVAL_MS);
+    const drainInterval = setInterval(() => {
+      if (!channelOpen) {
+        log('warn', 'Skipping DLQ drain: channel is not open');
+        return;
+      }
+      drainDLQ(channel);
+    }, DLQ_DRAIN_INTERVAL_MS);
     log('info', `DLQ drain scheduled every ${DLQ_DRAIN_INTERVAL_MS / 1000}s`);
     await channel.consume(queueName, async (message) => {
       let queueMsg;
@@ -291,8 +322,12 @@ const drainDLQ = async (channel) => {
 
       } catch (error) {
         log('error', error.message);
-        sendToDLQ(channel, message, error.message);
-        channel.ack(message);
+        if (channelOpen) {
+          sendToDLQ(channel, message, error.message);
+          channel.ack(message);
+        } else {
+          log('warn', 'Channel closed during message processing; message will be requeued on restart');
+        }
       }
 
     })
